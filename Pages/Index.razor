@@ -1,0 +1,102 @@
+﻿@using Azure
+@using Azure.AI.OpenAI;
+
+@using Azure.Identity;
+@using OpenAI.Chat
+
+@using System.Text.Json;
+
+@page "/"
+
+
+<div class="vstack gap-3">
+    <div class="mb-3">
+        <label for="endpoint" class="form-label">Azure Endpoint</label>
+        <input type="email" class="form-control" id="endpoint" aria-describedby="emailHelp" @bind-value="@azureEndpoint">
+    </div>
+    <div class="mb-3">
+        <label for="apiKey" class="form-label">Key</label>
+        <input type="password" class="form-control" id="apiKey" @bind-value="@openAiKey">
+    </div>
+    <textarea class="form-control" rows="5" @bind="@request" ></textarea>
+    <button class="btn btn-primary" @onclick="@(async()=>await GetCompletion())" disabled="@((string.IsNullOrWhiteSpace(openAiKey) || string.IsNullOrWhiteSpace(azureEndpoint)||string.IsNullOrWhiteSpace(request)))">Submit</button>
+    @* @bind:after="@(async () => await GetCompletion())" *@
+    @if (isWaiting)
+    {
+        <div>Waiting...</div>
+    }
+    else if (responseError != null)
+    {
+        <div class="alert alert-danger" role="alert">
+            @responseError
+        </div>
+    }
+    else
+    {
+        <div class="alert alert-success" role="alert">
+            @response
+        </div>
+    }
+</div>
+
+
+@if (string.IsNullOrWhiteSpace(openAiKey) || string.IsNullOrWhiteSpace(azureEndpoint))
+{
+    <div class="alert alert-danger" role="alert">
+        Please set the OpenAI key and Azure endpoint
+    </div>
+}
+
+@code{
+
+    string? openAiKey;
+    string? azureEndpoint;
+    string? request;
+    string? response;
+    string? responseError;
+    string systemPrompt = "Provide answers to the questions as an omniscient expert";
+    bool isWaiting;
+    ChatCompletionOptions options = new ChatCompletionOptions()
+    {
+        MaxOutputTokenCount = 2400,
+            Temperature = 0.9f,
+            PresencePenalty = 0,
+            FrequencyPenalty = 0,
+        };
+
+    
+    protected async Task GetCompletion()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(openAiKey) || string.IsNullOrWhiteSpace(azureEndpoint))
+            {
+                responseError = "Please set the OpenAI key and Azure endpoint";
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(request))
+            {
+                responseError = "Enter Input";
+                return;
+            }
+            responseError = null;   
+
+            isWaiting = true;
+            var client = new AzureOpenAIClient(new Uri(azureEndpoint), new AzureKeyCredential(openAiKey));
+            var chatClient = client.GetChatClient("gpt-4o-mini");
+            var chatResponse = await chatClient.CompleteChatAsync([new SystemChatMessage(systemPrompt), new UserChatMessage(request)], options);
+            response = chatResponse.Value.Content[0].Text;
+            //response = JsonSerializer.Deserialize<string?>(chatReply);
+            responseError = null;   
+        }
+        catch (Exception ex)
+        {
+            // TODO Global messaging - specifically for non-fatal errors
+            responseError = ex.Message;
+        }
+        finally
+        {
+            isWaiting = false;
+        }
+    }
+}
